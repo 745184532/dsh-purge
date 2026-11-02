@@ -38,10 +38,15 @@
 > 说明：GitHub 禁止向 `refs/pull/*` 推送（`deny updating a hidden ref`），
 > 因此上游的 26 个 PR ref 已转换为同 SHA 的 `archive/pr-*` tag，commit 对象一个不少。
 
-### 相对上游的唯一差异
+### 相对上游的差异
 
-`master` 比上游 `master` **多一个 commit**，即本文件 `MIRROR-NOTICE.md`。
-上游原始内容本身零改动，可通过 `upstream-snapshot-6c1d638` 拿到，diff 命令见第四节。
+`master` 比上游 `master` 多两个提交：
+
+1. 本文件 `MIRROR-NOTICE.md`（备份说明，上游原始内容此时零改动）；
+2. **`v1.1.72` 下游修复**——上游 `1.1.71` 在 DSH `0.2.1-rc.5` 上跑不起来，本仓库在其基础上做了兼容性修补，
+   详见 [第六节](#downstream) 与 `release-notes.md`。
+
+想拿上游原始状态：`git diff upstream-snapshot-6c1d638`。
 
 ---
 
@@ -103,3 +108,36 @@ diff /tmp/up.txt /tmp/mine.txt
 上游 README 在备份时载明：**项目暂停更新**，作者因工作安排暂停维护、不再发版、暂不收
 issue / PR，也不保证跟进新版 dsh；仓库仍可自用。该状态与「违规商用公示」章节一并完整保留在
 `README.md` / `README.zh-CN.md` 中，本镜像不修改其任何字句。
+
+---
+
+<a id="downstream"></a>
+## 六、下游修复：v1.1.72（本仓库新增）/ Downstream fixes
+
+上游最后一次发版是 `1.1.71`（`dshTarget: 0.2.0-rc.2`）。DSH 升到 `0.2.1-rc.5` 后它有三个硬故障，
+本仓库在其基础上修好，发为 `1.1.72`：
+
+| 故障 | 现象 | 原因 | 修法 |
+| --- | --- | --- | --- |
+| 提示词渲染失败 | 发消息直接报 `unknown prompt variable "{{cwd}}"`，一条都发不出去 | 0.2.1 起提示词变量只注册 `provider` / `model` | persona suffix 不再写 `{{cwd}}`，并把 `cwd` 移出插值白名单 |
+| 宿主 exit 1 | 解包修补后进程直接退出 | 同步函数里 fire-and-forget 的异步 `atomicCopyFile`，rejection 无人接管 | 改成同步 `copyFileSync` |
+| 备份全失败 | 82 个补丁写进宿主，一份 `.bak` 都没有，回滚无从恢复 | `hostFs` 没转发 `closeSync`，占位 fd 悬空，Windows 上 `rename` 覆盖 `.bak` 报 `EPERM` | 补上 `closeSync`，占位改用 `writeFile(..., {flag:"wx"})`；0 字节 `.bak` 在 apply 时重建、revert 时丢弃 |
+
+另外两个健壮性修复：临时文件名加进程内序号 + 随机段（同毫秒双写导致的 `rename ENOENT`）；
+`atomicWriteSync` / `atomicWriteFile` / `atomicCopyFile` 共用同一套临时名生成。
+
+**这些修改只动 `lib/` 与 `cordis.patch.yml` 的兼容层，不涉及原作者的提示词与思路。**
+原始提示词、预设、技能目录、许可协议全部沿用，署名与「不得商用」条款照旧适用。
+
+### 怎么装
+
+```sh
+git clone https://github.com/745184532/dsh-purge.git
+cd dsh-purge
+dsh plugin --profile desktop add .   # 官方桌面 EXE
+dsh plugin --profile web     add .   # 官方 dsh web
+```
+
+写进 profile 之后，还要在该宿主的会话标题旁点 **dsh-purge → 清洗 → 应用**，成功会重启一次。
+
+> `npm` 上并没有 `dsh-purge` 这个包（`add dsh-purge` 会 404），所以只能用上面的路径或 tarball 安装。

@@ -28,7 +28,9 @@
   config:
     includeHarnessIdentity: false
     personaPrefix: ""
-    personaSuffix: Your working directory is {{cwd}}.
+    # DSH 0.2.1 起提示词变量只剩 provider / model；{{cwd}} 会让整条消息
+    # 抛 unknown prompt variable。工作目录已由运行时上下文提供，这里留空。
+    personaSuffix: ""
 
 - id: dsh-purge
   inject: [systemPrompt, tools]

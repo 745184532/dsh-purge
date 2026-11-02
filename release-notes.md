@@ -1,3 +1,48 @@
+# 1.1.72
+
+## 中文
+
+- 版本 **1.1.72**，适配 DSH **0.2.1-rc.5**。
+- **修「发不出消息」**：DSH 0.2.1 的提示词变量只剩 `provider` / `model`，段落里出现 `{{cwd}}` 会在渲染时抛
+  `unknown prompt variable "{{cwd}}" in section "deployment:persona-suffix"`，整条请求直接失败。
+  `lib/identity.js` 不再把 persona suffix 改写成 `{{cwd}}`（工作目录本来就在运行时上下文里），
+  并把 `cwd` 从可放行的插值白名单里移除，用户提示词里的 `{{cwd}}` 会被安全转义成 `{ {cwd}}`。
+- `cordis.patch.yml` 的内置 `system-prompt` 配置 `personaSuffix` 置空，避免插件重写没生效时仍抛错。
+- **修「宿主 exit 1」**：解包后修补官方 CLI 时用 fire-and-forget 的异步 `atomicCopyFile` 写
+  `.dsh-purge.bak`，rejection 无人接手会把宿主顶掉；改成同步 copy。
+- `atomicWriteSync` / `atomicWriteFile` / `atomicCopyFile` 的临时文件名加进程内序号与随机段：
+  同一毫秒内两次写同一目标是先前 `rename ... ENOENT` 崩溃的根因。
+- **修「备份全部失败」**：`hostFs` 没转发 `closeSync`，`backupAll` 的占位 fd 从未关闭，
+  Windows 上 `rename` 覆盖同目录 `.bak` 一律 `EPERM`。结果是 82 个补丁写进宿主却没有一份备份，
+  `revertAll` 也就无从还原。现在宿主 fs 补齐 `closeSync`，占位改用 `writeFile(..., {flag:"wx"})`，
+  不再有悬空 fd；实测同一份 0.2.1-rc.5 宿主：备份 52/52 成功、apply 56 条、revert 逐字节还原。
+- 0 字节的 `.dshpurge.bak`（上次中断留下的占位）在 apply 时会重建、在 revert 时会直接丢弃，
+  不会被当成备份把正式文件写空。
+- `dshTarget` 更新为 `0.2.1-rc.5`。
+
+## English
+
+- **1.1.72**, targets DSH **0.2.1-rc.5**.
+- Fix "message cannot be sent": DSH 0.2.1 registers only `provider` / `model` prompt variables, so any
+  interpolated section containing `{{cwd}}` throws
+  `unknown prompt variable "{{cwd}}" in section "deployment:persona-suffix"` and the request fails.
+  `lib/identity.js` no longer rewrites the persona suffix to `{{cwd}}` (the working directory already
+  arrives through the runtime context) and drops `cwd` from the interpolation allow-list, so `{{cwd}}`
+  inside user prompt text is escaped to `{ {cwd}}`.
+- The bundled `system-prompt` patch now sets an empty `personaSuffix`.
+- Fix "host exits with 1": the post-unpack CLI repair wrote `.dsh-purge.bak` through a fire-and-forget
+  async `atomicCopyFile`; the unhandled rejection killed the host. It now copies synchronously.
+- Temporary names in `atomicWriteSync` / `atomicWriteFile` / `atomicCopyFile` gain a per-process sequence
+  and random suffix — same-millisecond writers to one target caused the earlier `rename ... ENOENT`.
+- Fix "every backup fails": `hostFs` never forwarded `closeSync`, so the placeholder fd in `backupAll`
+  stayed open and Windows rejected the `.bak` rename with `EPERM`. All 82 patches could land on the host
+  with no backups at all, leaving `revertAll` nothing to restore. `hostFs` now exposes `closeSync` and the
+  placeholder uses `writeFile(..., { flag: "wx" })`, so no fd is left open; on the same 0.2.1-rc.5 host:
+  52/52 backups, 56 patches applied, revert restored every byte.
+- A zero-byte `.dshpurge.bak` (placeholder from an interrupted run) is rebuilt on apply and discarded on
+  revert instead of truncating the real file.
+- `dshTarget` is now `0.2.1-rc.5`.
+
 # 1.1.71
 
 ## 中文
